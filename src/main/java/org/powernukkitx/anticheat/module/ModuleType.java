@@ -8,5 +8,6 @@ public enum ModuleType {
     MOVEMENT,
     BLOCK_BREAKING,
     COMBAT,
-    MISC
+    MISC,
+    NETWORK
 }
