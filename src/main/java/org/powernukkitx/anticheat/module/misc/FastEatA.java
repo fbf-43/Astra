@@ -15,7 +15,7 @@ import org.powernukkitx.anticheat.player.AntiCheatPlayer;
 import org.powernukkitx.anticheat.util.ViolationId;
 import org.powernukkitx.item.ItemFood;
 
-public class FastEatModule extends Module {
+public class FastEatA extends Module {
 
     private static final double MIN_EAT_TIME = 1.5;
     private static final int MAX_PING_TOLERANCE = 200;
