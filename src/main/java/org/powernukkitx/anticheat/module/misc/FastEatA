@@ -1,0 +1,103 @@
+package org.powernukkitx.anticheat.module.misc;
+
+import org.powernukkitx.event.EventHandler;
+import org.powernukkitx.event.player.PlayerItemConsumeEvent;
+import org.powernukkitx.event.server.PacketReceiveEvent;
+import java.util.Optional;
+import java.util.UUID;
+import it.unimi.dsi.fastutil.objects.Object2DoubleOpenHashMap;
+import org.cloudburstmc.protocol.bedrock.data.entity.EntityEventType;
+import org.cloudburstmc.protocol.bedrock.packet.EntityEventPacket;
+import org.powernukkitx.anticheat.AntiCheatPlugin;
+import org.powernukkitx.anticheat.module.Module;
+import org.powernukkitx.anticheat.module.ModuleType;
+import org.powernukkitx.anticheat.player.AntiCheatPlayer;
+import org.powernukkitx.anticheat.util.ViolationId;
+import org.powernukkitx.item.ItemFood;
+
+public class FastEatModule extends Module {
+
+    private static final double MIN_EAT_TIME = 1.5;
+    private static final int MAX_PING_TOLERANCE = 200;
+
+    private final Object2DoubleOpenHashMap<UUID> lastEatingStart =
+        new Object2DoubleOpenHashMap<>();
+
+    public FastEatModule(AntiCheatPlugin plugin) {
+        super(plugin);
+    }
+
+    @EventHandler
+    public void onPacketReceive(PacketReceiveEvent event) {
+        if (!(event.getPacket() instanceof EntityEventPacket packet)) {
+            return;
+        }
+
+        if (!packet.getType().equals(EntityEventType.EATING_ITEM)) {
+            return;
+        }
+
+        final Optional<AntiCheatPlayer> optional = this.plugin.getPlayerRegistry()
+            .getPlayer(event.getPlayer().getUniqueId());
+
+        if (optional.isEmpty()) {
+            return;
+        }
+
+        final AntiCheatPlayer player = optional.get();
+        final UUID uuid = player.getUniqueId();
+
+        if (this.lastEatingStart.containsKey(uuid)) {
+            return;
+        }
+
+        this.lastEatingStart.put(uuid, System.nanoTime() / 1_000_000_000D);
+    }
+
+    @EventHandler
+    public void onPlayerItemConsume(PlayerItemConsumeEvent event) {
+        if (!(event.getItem() instanceof ItemFood)) {
+            return;
+        }
+
+        final Optional<AntiCheatPlayer> optional = this.plugin.getPlayerRegistry()
+            .getPlayer(event.getPlayer().getUniqueId());
+
+        if (optional.isEmpty()) {
+            return;
+        }
+
+        final AntiCheatPlayer player = optional.get();
+        final UUID uuid = player.getUniqueId();
+
+        if (!this.lastEatingStart.containsKey(uuid)) {
+            return;
+        }
+
+        final double currentTick = System.nanoTime() / 1_000_000_000D;
+        final double startTick = this.lastEatingStart.getDouble(uuid);
+        final double diff = currentTick - startTick;
+        final int ping = player.getServerPlayer().getPing();
+
+        this.lastEatingStart.removeDouble(uuid);
+
+        if (diff < MIN_EAT_TIME && ping < MAX_PING_TOLERANCE) {
+            event.setCancelled();
+            player.sendViolationWarning(
+                ViolationId.FAST_EAT,
+                player.getName() + " consumed an item too fast, diff: " + diff +
+                    ", ping: " + ping
+            );
+        }
+    }
+
+    @Override
+    public String getName() {
+        return "FastEat";
+    }
+
+    @Override
+    public ModuleType getType() {
+        return ModuleType.COMBAT;
+    }
+}
