@@ -1,3 +1,7 @@
-# Astra
+# Astra Anticheat In PowerNukkitX 
 
-overrideServerAuthBlockBreaking toggle must be enabled in PNX misc settings
+
+- Autoclick Checks
+- fastEat checks
+- Proxy Checks
+- 
