@@ -16,10 +16,8 @@ import org.powernukkitx.anticheat.module.ModuleType;
 import org.powernukkitx.anticheat.player.AntiCheatPlayer;
 import org.powernukkitx.anticheat.util.ViolationId;
 
-/**
- * @author Kaooot
- */
-public class AutoClickerModulB extends Module {
+
+public class AutoClickerModuleB extends Module {
 
     private static final int SAMPLE_SIZE = 20;
     private static final int MIN_SAMPLES = 10;
