@@ -1,0 +1,140 @@
+package org.powernukkitx.anticheat.module.combat;
+
+import org.powernukkitx.event.EventHandler;
+import org.powernukkitx.event.server.PacketReceiveEvent;
+import java.util.Optional;
+import java.util.UUID;
+import it.unimi.dsi.fastutil.longs.LongArrayList;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import org.cloudburstmc.protocol.bedrock.data.payload.inventory.transaction.ItemUseOnActorActionType;
+import org.cloudburstmc.protocol.bedrock.data.payload.inventory.transaction.data.InventoryTransactionDataType;
+import org.cloudburstmc.protocol.bedrock.data.payload.inventory.transaction.data.ItemUseOnActorInventoryTransaction;
+import org.cloudburstmc.protocol.bedrock.packet.InventoryTransactionPacket;
+import org.powernukkitx.anticheat.AntiCheatPlugin;
+import org.powernukkitx.anticheat.module.Module;
+import org.powernukkitx.anticheat.module.ModuleType;
+import org.powernukkitx.anticheat.player.AntiCheatPlayer;
+import org.powernukkitx.anticheat.util.ViolationId;
+
+/**
+ * @author Kaooot
+ */
+public class AutoClickerModulB extends Module {
+
+    private static final int SAMPLE_SIZE = 20;
+    private static final int MIN_SAMPLES = 10;
+    private static final double SUSPICIOUS_STD_DEV = 15.0;
+    private static final double MAX_AVERAGE_INTERVAL = 200.0;
+
+    private final Object2ObjectOpenHashMap<UUID, LongArrayList> clickTimestamps =
+        new Object2ObjectOpenHashMap<>();
+
+    public AutoClickerPatternModule(AntiCheatPlugin plugin) {
+        super(plugin);
+    }
+
+    @EventHandler
+    public void onInventoryTransaction(PacketReceiveEvent event) {
+        if (!(event.getPacket() instanceof InventoryTransactionPacket packet)) {
+            return;
+        }
+
+        if (!packet.getTransaction().getType()
+            .equals(InventoryTransactionDataType.ITEM_USE_ON_ACTOR)) {
+            return;
+        }
+
+        final ItemUseOnActorInventoryTransaction transaction =
+            (ItemUseOnActorInventoryTransaction) packet.getTransaction();
+
+        if (!transaction.getActionType().equals(ItemUseOnActorActionType.ATTACK)) {
+            return;
+        }
+
+        final Optional<AntiCheatPlayer> optional = this.plugin.getPlayerRegistry()
+            .getPlayer(event.getPlayer().getUniqueId());
+
+        if (optional.isEmpty()) {
+            return;
+        }
+
+        final AntiCheatPlayer player = optional.get();
+        final UUID uuid = player.getUniqueId();
+        final long now = System.currentTimeMillis();
+
+        final LongArrayList timestamps = this.clickTimestamps.computeIfAbsent(
+            uuid, u -> new LongArrayList(SAMPLE_SIZE)
+        );
+
+        timestamps.add(now);
+
+        if (timestamps.size() > SAMPLE_SIZE) {
+            timestamps.removeLong(0);
+        }
+
+        if (timestamps.size() < MIN_SAMPLES) {
+            return;
+        }
+
+        this.analyzePattern(player, timestamps);
+    }
+
+    private void analyzePattern(AntiCheatPlayer player, LongArrayList timestamps) {
+        final int size = timestamps.size();
+        final double[] intervals = new double[size - 1];
+
+        for (int i = 1; i < size; i++) {
+            intervals[i - 1] = timestamps.getLong(i) - timestamps.getLong(i - 1);
+        }
+
+        final double average = this.average(intervals);
+
+        if (average > MAX_AVERAGE_INTERVAL) {
+            return;
+        }
+
+        final double stdDev = this.standardDeviation(intervals, average);
+
+        if (stdDev < SUSPICIOUS_STD_DEV) {
+            player.sendViolationWarning(
+                ViolationId.SUSPICIOUS_CLICK_PATTERN,
+                player.getName() + " has an abnormally consistent click pattern " +
+                    "(stdDev: " + String.format("%.2f", stdDev) +
+                    "ms, average: " + String.format("%.2f", average) + "ms)"
+            );
+
+            timestamps.clear();
+        }
+    }
+
+    private double average(double[] values) {
+        double sum = 0;
+
+        for (double value : values) {
+            sum += value;
+        }
+
+        return sum / values.length;
+    }
+
+    private double standardDeviation(double[] values, double average) {
+        double sumSquaredDiff = 0;
+
+        for (double value : values) {
+            final double diff = value - average;
+            sumSquaredDiff += diff * diff;
+        }
+
+        return Math.sqrt(sumSquaredDiff / values.length);
+    }
+
+    @Override
+    public String getName() {
+        return "AutoClickerPattern";
+    }
+
+    @Override
+    public ModuleType getType() {
+        return ModuleType.COMBAT;
+    }
+}
